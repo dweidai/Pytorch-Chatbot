@@ -70,35 +70,41 @@ def normalizeString(s):
     return s
 
 print("Reading lines...")
-lines = open('formatted_movie_lines.txt', 'r', encoding='utf-8')
+lines = open('dadatata.txt', 'r', encoding='utf-8')
 lines = lines.read().strip().split('\n')
 print("total lines are " + str(len(lines)))
 
 import re
 print("Preprocessing lines...")
 pairs = [[normalizeString(s) for s in l.split('\t')] for l in lines]
+print("Done Preprocessing...")
+
+vocab = Voc()
 
 newpairs = []
 for pair in pairs:
     newpair = []
     index = 0
     while index in range(len(pair)):
-        if(pair[index] != ''):
-            newpair.append(pair[index])
+        if(pair[index] != '' or pair[index]!= '.'):
+          newpair.append(pair[index])
+        else:
+          print(pair[index])
         index +=1
     newpairs.append(newpair)
 
-vocab = Voc()
-
-threshold = 10
+threshold = 9
 line_pairs = []
-for pair in pairs:
+for pair in newpairs:
     check1 = False
     check2 = False
     #print(pair)
-    if len(pair) < 2:
+    if len(pair) != 2:
+        print(pair)
         continue
     else:
+        pair[0] = pair[0].replace(".", "")
+        pair[1] = pair[1].replace(".", "")
         if len(pair[0].split(' ')) < threshold:
             check1 = True
         if len(pair[1].split(' ')) < threshold:
@@ -111,10 +117,6 @@ for line in line_pairs:
     vocab.addSentence(line[0])
     vocab.addSentence(line[1])
 print("Total number of words:", vocab.num_words)
-
-for line in lines[:10]:
-    print(line)
-pairs = line_pairs
 
 MIN_COUNT = 3
 keep_words = []
@@ -208,8 +210,8 @@ def maskNLLLoss(inp, target, mask):
     loss = loss.to(device)
     return loss, nTotal.item()
 
-MAX_LENGTH = 10
-small_batch_size = 5
+MAX_LENGTH = 9
+small_batch_size = 4
 batches = batch2TrainData(vocab, [random.choice(pairs) for _ in range(small_batch_size)])
 input_variable, lengths, target_variable, mask, max_target_len = batches
 
@@ -401,7 +403,7 @@ def train(input_variable, lengths, target_variable, mask, max_target_len, encode
     return sum(print_losses) / n_totals
 
 avg_losses = []
-def trainIters(model_name, voc, pairs, encoder, decoder, encoder_optimizer, decoder_optimizer, embedding, encoder_n_layers, decoder_n_layers, save_dir, n_iteration, batch_size, print_every, save_every, clip, corpus_name, loadFilename):
+def trainIters(model_name, voc, pairs, encoder, decoder, encoder_optimizer, decoder_optimizer, embedding, encoder_n_layers, decoder_n_layers, save_dir, n_iteration, batch_size, print_every, save_every, clip, corpus_name):
 
     # Load batches for each iteration
     training_batches = [batch2TrainData(voc, [random.choice(pairs) for _ in range(batch_size)])
@@ -411,8 +413,6 @@ def trainIters(model_name, voc, pairs, encoder, decoder, encoder_optimizer, deco
     print('Initializing ...')
     start_iteration = 1
     print_loss = 0
-    if loadFilename:
-        start_iteration = checkpoint['iteration'] + 1
 
     # Training loop
     print("Training...")
@@ -430,7 +430,7 @@ def trainIters(model_name, voc, pairs, encoder, decoder, encoder_optimizer, deco
         if iteration % print_every == 0:
             print_loss_avg = print_loss / print_every
             avg_losses.append(print_loss_avg)
-            print("Iteration: {}; Total Iteration: {:.1f}; Average loss: {:.4f}".format(iteration, n_iteration, print_loss_avg))
+            print("Iteration: {}/{};  Average loss: {:.4f}".format(iteration, n_iteration, print_loss_avg))
             print_loss = 0
 
         # Save checkpoint
@@ -457,35 +457,17 @@ attn_model = 'dot'
 hidden_size = 500
 encoder_n_layers = 2
 decoder_n_layers = 2
-dropout = 0.15
-batch_size = 100
-checkpoint_iter = 20000
-
-# Load model if a loadFilename is provided
-if loadFilename:
-    # If loading on same machine the model was trained on
-    checkpoint = torch.load(loadFilename)
-    # If loading a model trained on GPU to CPU
-    #checkpoint = torch.load(loadFilename, map_location=torch.device('cpu'))
-    encoder_sd = checkpoint['en']
-    decoder_sd = checkpoint['de']
-    encoder_optimizer_sd = checkpoint['en_opt']
-    decoder_optimizer_sd = checkpoint['de_opt']
-    embedding_sd = checkpoint['embedding']
-    voc.__dict__ = checkpoint['voc_dict']
-
+dropout = 0.10
+batch_size = 64
+checkpoint_iter = 5000
 
 print('Building encoder and decoder ...')
 # Initialize word embeddings
 embedding = nn.Embedding(vocab.num_words, hidden_size)
-if loadFilename:
-    embedding.load_state_dict(embedding_sd)
 # Initialize encoder & decoder models
 encoder = EncoderRNN(hidden_size, embedding, encoder_n_layers, dropout)
 decoder = LuongAttnDecoderRNN(attn_model, embedding, hidden_size, vocab.num_words, decoder_n_layers, dropout)
-if loadFilename:
-    encoder.load_state_dict(encoder_sd)
-    decoder.load_state_dict(decoder_sd)
+
 # Use appropriate device
 encoder = encoder.to(device)
 decoder = decoder.to(device)
@@ -494,30 +476,27 @@ print('Models built and ready to go!')
 # Configure training/optimization
 clip = 50.0
 teacher_forcing_ratio = 1.0
-learning_rate = 0.05
-decoder_learning_ratio = 1.0
-n_iteration = 100000
-print_every = 200
-save_every = 10000
+learning_rate = 0.0005
+decoder_learning_ratio = 2.0
+n_iteration = 20000
+print_every = 100
+save_every = 5000
 save_dir = os.path.join("data", "save")
-corpus_name = "Testing"
+corpus_name = "Movie_lines"
 # Ensure dropout layers are in train mode
 encoder.train()
 decoder.train()
 
 # Initialize optimizers
 print('Building optimizers ...')
-encoder_optimizer = optim.Adadelta(encoder.parameters(), lr=learning_rate)
-decoder_optimizer = optim.Adadelta(decoder.parameters(), lr=learning_rate * decoder_learning_ratio)
-if loadFilename:
-    encoder_optimizer.load_state_dict(encoder_optimizer_sd)
-    decoder_optimizer.load_state_dict(decoder_optimizer_sd)
+encoder_optimizer = optim.Adam(encoder.parameters(), lr=learning_rate)
+decoder_optimizer = optim.Adam(decoder.parameters(), lr=learning_rate * decoder_learning_ratio)
 
 # Run training iterations
 print("Starting Training!")
 trainIters(model_name, vocab, pairs, encoder, decoder, encoder_optimizer, decoder_optimizer,
            embedding, encoder_n_layers, decoder_n_layers, save_dir, n_iteration, batch_size,
-           print_every, save_every, clip, corpus_name, loadFilename)
+           print_every, save_every, clip, corpus_name)
 
 import matplotlib.pyplot as plt
 # %matplotlib inline
@@ -859,5 +838,4 @@ def demo(encoder, decoder, searcher, voc, cls_valence, cls_arousal):
 
 demo(encoder, decoder, searcher, vocab, cls_valence, cls_arousal)
 
-#the first generation is done
-
+#the second generation RNN
