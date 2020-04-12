@@ -1,0 +1,3 @@
+This is a file from summer internship/research.
+I explored a couple different ways to implement a chatbot. I have tried with seq-2-seq neural network, I have used prebuilt RAASA models and so forth.
+In the end, I also added a sentiment analysis on the user input to further assist the understanding. 
